@@ -1,4 +1,7 @@
+# 💀 0xKern3lCrush-M4te-CVE-2026-0828
 # Windows BYOVD Research & Endpoint Recon Notes
+
+<img src="logo.png" alt="0xKern3lCrush Logo" width="1024">
 
 **Strictly educational / security research repository.**  
 Goal: Document and understand Bring-Your-Own-Vulnerable-Driver (BYOVD) techniques via public disclosures — **zero working exploits included**.
@@ -71,4 +74,4 @@ Broader BYOVD trends → dozens of signed vulnerable drivers abused 2024–2026 
 ```powershell
 # From Developer Command Prompt (VS)
 cl.exe /EHsc /W4 src/0xPoC.c
-0xrecon.exe
+0xPoC.exe
