@@ -1,0 +1,7 @@
+drivers/*.sys
+drivers/ProcessMonitorDriver.sys
+
+*.obj
+*.exe
+bin/
+.vs/
