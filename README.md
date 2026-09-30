@@ -1,77 +1,167 @@
-# 💀 0xKern3lCrush-M4te-CVE-2026-0828
-# Windows BYOVD Research & Endpoint Recon Notes
+# 0xKern3lCrush
 
-<img src="logo.png" alt="0xKern3lCrush Logo" width="1024">
+Windows BYOVD research on two real cases: the Safetica ProcessMonitorDriver
+(CVE-2026-0828) and the ThrottleStop driver abused by MedusaLocker
+(CVE-2025-7771). The repository documents the exposed interfaces, the
+privileged outcome each one reaches, and how to detect the abuse. It ships
+safe user-mode reconnaissance only: no kernel-mode code, no IOCTL invocation,
+and no process termination routine.
 
-**Strictly educational / security research repository.**  
-Goal: Document and understand Bring-Your-Own-Vulnerable-Driver (BYOVD) techniques via public disclosures — **zero working exploits included**.
+<p align="center">
+  <img src="logo.png" alt="0xKern3lCrush" width="340">
+</p>
 
-This repo collects:
-- Safe user-mode reconnaissance code (process enumeration via Toolhelp32 APIs)
-- Static analysis artifacts and notes on real BYOVD cases
-- No kernel-mode code, no IOCTL invocation logic, no process termination routines
+<br>
 
-### ⚠️ Critical Ethical & Legal Warning (read before anything else)
-- This repo is **NOT** an exploit delivery mechanism.
-- **Do NOT** load the included driver sample on any system — even in a lab — without isolated VM + snapshot rollback.
-- Loading vulnerable signed drivers or sending malicious IOCTLs without explicit authorization is a felony in most countries (computer fraud/abuse, unauthorized access, etc.).
-- Use **only** on systems you own or have **written permission** to test.
-- Even "research" activity can brick machines, corrupt OS installs, or trigger irreversible EDR alerts.
+## What is 0xKern3lCrush?
 
-### Motivation
-EDR/AV products increasingly protect their own processes (PPL, protected process light, restricted tokens).  
-Attackers bypass via **BYOVD**: drop a legitimate-but-vulnerable signed driver → abuse weak IOCTL handlers → achieve kernel-level arbitrary process kill / memory r/w / etc.
+Endpoint protection increasingly guards its own processes with protection
+levels and restricted tokens, so attackers move the fight into the kernel
+with Bring Your Own Vulnerable Driver. They drop a legitimate but vulnerable
+signed driver, call a weak IOCTL handler, and reach a kernel primitive such
+as arbitrary process termination or arbitrary memory read and write.
 
-This repo helps red/blue teams:
-- Spot BYOVD patterns in malware (MedusaLocker, Qilin, Storm-2603, etc.)
-- Understand weak driver design flaws
-- Build better detections (driver blocklists, WDAC rules, IOCTL monitoring)
+This repository studies that pattern on two public cases and turns each one
+into detection and hardening material.
 
-### Key Files
-- `src/0xPoC.c`  
-  Safe, read-only process enumeration — lists common EDR/AV/EDR service names. First recon step before any hypothetical advanced technique.
+<br>
 
-- `drivers/0xhashes.md`   
-  **Artifact Identification** — Contains SHA256 verification and links to public research mirrors. This repo does **not** host binary drivers.
+> The repository is a study, not a weapon. It carries no working exploit and
+> no kernel-mode code.
 
-### Studied Case: CVE-2026-0828 — Safetica ProcessMonitorDriver.sys
-- **Published**: January 2026 (KOSEC research originally Nov 2025)
-- **Driver**: `ProcessMonitorDriver.sys` (Safetica Endpoint Client x64)
-- **Affected versions**: 10.5.75.0, 11.11.4.0
-- **Known hashes** → see `drivers/0xhashes.md`
-- **Vulnerability**: Unprivileged user can abuse exposed IOCTL handler(s) to terminate arbitrary processes (including protected/system critical ones)
-- **Root cause**: Lack of caller privilege validation + improper input sanitization on IOCTL path
-- **Impact**: Kernel-level process termination (PsTerminateProcess style) → blind Safetica DLP/monitoring → data exfil, ransomware staging
-- **Real-world context**: Classic BYOVD primitive — attackers drop driver → kill EDR → proceed with payload
-- **Status**: No vendor patch publicly confirmed as of Feb 2026; CERT VU#818729 published Jan 20, 2026
+## Why this matters
 
-Detailed notes → `research/0xsafetica-cve-2026-0828.md`
+The Safetica and ThrottleStop cases are not theoretical. ThrottleStop.sys was
+weaponized by MedusaLocker operators in real intrusions, and the pattern
+generalizes across dozens of signed drivers abused between 2024 and 2026. A
+driver that reaches kernel process termination or kernel memory write is a
+direct path to silencing endpoint protection before a payload lands.
 
-### Studied Case: CVE-2025-7771 — ThrottleStop.sys Abuse by MedusaLocker Ransomware
-MedusaLocker (RaaS since 2019) operators have weaponized **ThrottleStop.sys** (TechPowerUp CPU throttling tool driver) in real-world attacks, most notably a Brazilian incident (analyzed by Kaspersky, Aug 2025). This shows a more advanced BYOVD flow compared to simple IOCTL kills.
+## Research contribution
 
-- **Driver**: `ThrottleStop.sys` (renamed to `ThrottleBlood.sys` by attackers), signed by TechPowerUp (DigiCert EV, 2020 cert)
-- **Vulnerability**: CVE-2025-7771 — exposes IOCTLs allowing arbitrary physical memory read/write via `MmMapIoSpace`. No proper access checks → user-mode app can patch kernel memory and invoke ring-0 functions.
-- **Exploitation Flow (concept/analysis only)**:
-  1. Load renamed driver (`ThrottleBlood.sys`) as service → create device `\\.\ThrottleStop`
-  2. Use user-mode tool (`All.exe` or similar) to send vulnerable IOCTLs (e.g., codes like 0x80006498 read / 0x8000649C write)
-  3. Bypass KASLR: query kernel base via `NtQuerySystemInformation(SystemModuleInformation)`
-  4. Translate virtual → physical addresses (often via SuperFetch info leak technique)
-  5. Read/write kernel memory → overwrite rarely-used function (e.g., `NtAddAtom`) with shellcode hook
-  6. Hook jumps to `PsLookupProcessById` + `PsTerminateProcess` → mass-kill AV/EDR processes (hardcoded list: MsMpEng.exe, CSFalconService.exe, ekrn.exe, etc.)
-  7. Restore original code to avoid crashes → deploy MedusaLocker variant
-- **Impact**: Kernel-god mode termination of protected processes → disable CrowdStrike, Bitdefender, Kaspersky, McAfee, Defender, etc. → ransomware encryption succeeds.
-- **Real-world context**: Seen in RDP credential theft → Mimikatz → pass-the-hash lateral → AV kill → MedusaLocker drop. Circulating since ~Oct 2024; targeted Russia, Brazil, Europe.
-- **Status**: Vendor preparing patch (as of 2025); not always on MS blocklist initially.
+The contribution here is a clear, reproducible writeup of each case and the
+defensive material that follows from it:
 
-Detailed technical breakdown → `research/0xthrottlestop-medusalocker.md`  
-Primary source: Kaspersky Securelist (Aug 2025) — https://securelist.com/av-killer-exploiting-throttlestop-sys/117026/
+- the exposed device and IOCTL surface for each driver
+- the root cause in each handler
+- the privileged outcome and its real-world use
+- driver artifact hashes and public research mirrors
+- detection and mitigation guidance
 
-### Other Cases
-Broader BYOVD trends → dozens of signed vulnerable drivers abused 2024–2026 (see `research/0xbyovd-patterns.md`)
+## Safetica ProcessMonitorDriver - CVE-2026-0828
 
-### Build & Run (safe recon only)
+- Publisher: Safetica Endpoint Client x64.
+- Driver: `ProcessMonitorDriver.sys`.
+- Affected versions: 10.5.75.0, 11.11.4.0.
+- Published: January 2026 (KOSEC research originally November 2025).
+- Root cause: the IOCTL handler does not validate the caller privilege and
+  does not sanitize the input on the termination path.
+- Outcome: an unprivileged caller can terminate arbitrary processes,
+  including protected and system critical ones, from kernel context.
+- Real-world use: a classic BYOVD primitive. The attacker drops the driver,
+  terminates endpoint protection, and proceeds with the payload.
+- Status: no vendor patch publicly confirmed as of February 2026. CERT
+  VU#818729 was published on January 20, 2026.
+
+Known hashes and mirrors are in [drivers/0xhashes.md](drivers/0xhashes.md).
+Full notes are in
+[research/0xsafetica-cve-2026-0828.md](research/0xsafetica-cve-2026-0828.md).
+
+## ThrottleStop - CVE-2025-7771
+
+MedusaLocker operators weaponized `ThrottleStop.sys`, the driver from the
+TechPowerUp CPU throttling tool, in real intrusions, including a Brazilian
+incident analyzed by Kaspersky in August 2025. It is a more advanced flow
+than a direct IOCTL kill.
+
+- Driver: `ThrottleStop.sys`, renamed to `ThrottleBlood.sys` by the
+  attackers, signed by TechPowerUp with a 2020 DigiCert EV certificate.
+- Root cause: the driver exposes IOCTLs that reach `MmMapIoSpace` with no
+  access check, so a user-mode caller can read and write physical memory.
+- Flow, analysis only:
+  1. Load the renamed driver as a service and open `\\.\ThrottleStop`.
+  2. Send the vulnerable IOCTLs (physical read `0x80006498`, write
+     `0x8000649C`).
+  3. Bypass KASLR by querying the kernel base through
+     `NtQuerySystemInformation(SystemModuleInformation)`.
+  4. Translate virtual to physical, often through a SuperFetch information
+     leak.
+  5. Overwrite a rarely used function with a hook.
+  6. The hook reaches the process lookup and termination path and kills a
+     hardcoded list of security processes.
+  7. Restore the original bytes and deploy the ransomware.
+- Outcome: kernel-level termination of protected security processes, which
+  lets encryption proceed.
+- Status: the vendor was preparing a patch through 2025; the driver was not
+  on the Microsoft blocklist at the start.
+
+Full notes are in
+[research/0xthrottlestop-medusalocker.md](research/0xthrottlestop-medusalocker.md).
+Primary source: Kaspersky Securelist, August 2025.
+
+## Detection
+
+- Driver load: watch for a random or renamed kernel service created from a
+  `.sys` file followed immediately by a start. Event ID 7045 and, with
+  service auditing on, 4697.
+- Device access: handles opened on the device names each driver exposes,
+  from an unexpected process.
+- IOCTL: the termination and physical memory IOCTL codes, correlated with
+  process termination of protected security processes.
+- Blocklist: keep the Microsoft vulnerable driver blocklist and your WDAC
+  policy current; the load fails where they are enforced.
+
+Mitigation notes are in [docs/0xmitigations.md](docs/0xmitigations.md).
+
+## Safe reconnaissance
+
+`src/0xPoC.c` is read-only. It enumerates running processes through the
+Toolhelp32 APIs and prints the names of common security products. It is the
+first reconnaissance step and it performs no privileged action.
+
 ```powershell
-# From Developer Command Prompt (VS)
+# From a Visual Studio Developer Command Prompt
 cl.exe /EHsc /W4 src/0xPoC.c
 0xPoC.exe
+```
+
+## Repository structure
+
+```
+0xKern3lCrush/
+|-- README.md
+|-- LICENSE
+|-- SECURITY.md
+|-- src/
+|   |-- 0xPoC.c          read-only process enumeration
+|   +-- 0xtargets.h      target name list
+|-- drivers/
+|   +-- 0xhashes.md      artifact hashes and public mirrors
+|-- research/
+|   |-- 0xbyovd-patterns.md
+|   |-- 0xsafetica-cve-2026-0828.md
+|   +-- 0xthrottlestop-medusalocker.md
++-- docs/
+    +-- 0xmitigations.md
+```
+
+## Limitations
+
+- No working exploit is included, by design.
+- The writeups are based on public disclosures and static analysis.
+- Blocklist status is snapshot specific and changes over time.
+- Version coverage reflects what was public at the time of writing.
+
+## References
+
+- Safetica ProcessMonitorDriver, CERT VU#818729 (2026-01-20).
+- Kaspersky Securelist, AV killer exploiting ThrottleStop.sys (2025-08).
+- Microsoft vulnerable driver blocklist.
+
+## Responsible use
+
+This project exists for research and defense. Load these drivers only on
+systems you own or are authorized to test, and only in an isolated
+environment with a snapshot to roll back to. Loading a vulnerable signed
+driver or sending a crafted IOCTL without authorization is illegal in most
+jurisdictions.

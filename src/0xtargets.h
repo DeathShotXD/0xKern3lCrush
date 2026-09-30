@@ -28,7 +28,7 @@ static const char* target_processes[] = {
     // "avgnt.exe",         // Avira
     // "avgui.exe",
     // "360tray.exe",       // 360 Total Security
-    NULL                    // End of list marker — do not remove
+    NULL                    // End of list marker - do not remove
 };
 
 #endif // _0XTARGETS_H_

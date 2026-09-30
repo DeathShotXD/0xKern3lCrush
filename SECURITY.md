@@ -1,6 +1,6 @@
 # Security Policy
 
-## 🛡️ Research Disclaimer
+##  Research Disclaimer
 This repository contains research into Bring Your Own Vulnerable Driver (BYOVD) techniques. It is intended solely for educational purposes, defensive engineering, and authorized security auditing.
 
 ## Reporting a Vulnerability
