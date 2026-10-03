@@ -8,7 +8,7 @@ safe user-mode reconnaissance only: no kernel-mode code, no IOCTL invocation,
 and no process termination routine.
 
 <p align="center">
-  <img src="logo.png" alt="0xKern3lCrush" width="340">
+  <img src="logo.png" alt="0xKern3lCrush Logo" width="1024">
 </p>
 
 <br>
